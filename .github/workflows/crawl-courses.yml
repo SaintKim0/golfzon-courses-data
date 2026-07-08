@@ -1,0 +1,76 @@
+name: Crawl new golf courses
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: poc-only = 접속 테스트만, crawl-and-commit = 신규 코스 크롤 후 push
+        required: true
+        default: poc-only
+        type: choice
+        options:
+          - poc-only
+          - crawl-and-commit
+  # PoC 성공 후 아래 schedule 주석을 해제하세요 (매일 KST 03:00)
+  # schedule:
+  #   - cron: "0 18 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: golfzon-crawl
+  cancel-in-progress: true
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: PoC smoke test
+        env:
+          CI: "true"
+        run: python scripts/poc_smoke_test.py
+
+      - name: Resolve run mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "value=crawl-and-commit" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Crawl new courses
+        if: steps.mode.outputs.value == 'crawl-and-commit'
+        env:
+          CI: "true"
+        run: python scripts/golfzon_auto_update_ci.py
+
+      - name: Commit and push if CSV changed
+        if: steps.mode.outputs.value == 'crawl-and-commit'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add golfzon_all_courses.csv
+          if git diff --staged --quiet; then
+            echo "변경사항 없음 — push 생략"
+            exit 0
+          fi
+          git commit -m "chore: auto-update new golf courses [skip ci]"
+          git push
