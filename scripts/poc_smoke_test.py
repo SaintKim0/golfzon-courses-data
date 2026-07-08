@@ -6,9 +6,24 @@ import sys
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPTS_DIR.parent
+DEBUG_DIR = REPO_ROOT / "poc-debug"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from golfzon_crawler import BASE_LIST_URL, list_page_cards, setup_driver
+
+
+def _write_debug(drv, message: str) -> None:
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    (DEBUG_DIR / "error.txt").write_text(message, encoding="utf-8")
+    try:
+        (DEBUG_DIR / "page.html").write_text(drv.page_source[:50000], encoding="utf-8")
+    except Exception:
+        pass
+    try:
+        drv.save_screenshot(str(DEBUG_DIR / "screenshot.png"))
+    except Exception:
+        pass
 
 
 def main() -> int:
@@ -21,11 +36,19 @@ def main() -> int:
         url = BASE_LIST_URL.format(page=1)
         print(f"URL: {url}")
         drv.get(url)
+        print(f"title: {drv.title}")
+        print(f"current_url: {drv.current_url}")
 
         courses = list_page_cards(drv)
         if not courses:
-            print("FAIL: #datalist에서 코스를 찾지 못했습니다.")
-            print("      IP 차단, headless 탐지, 또는 사이트 구조 변경 가능성")
+            msg = (
+                "FAIL: #datalist에서 코스를 찾지 못했습니다.\n"
+                f"title: {drv.title}\n"
+                f"current_url: {drv.current_url}\n"
+                "가능한 원인: GitHub Actions IP 차단, headless 탐지, 사이트 구조 변경\n"
+            )
+            print(msg)
+            _write_debug(drv, msg)
             return 1
 
         print(f"OK: {len(courses)}개 코스 카드 로드 성공")

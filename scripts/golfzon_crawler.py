@@ -23,18 +23,32 @@ def setup_driver(headless: bool = True) -> webdriver.Chrome:
     opts.add_argument("--disable-gpu")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--lang=ko-KR")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
     opts.add_argument(
         "user-agent=Mozilla/5.0 (X11; Linux x86_64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 
     if os.environ.get("CI"):
-        # GitHub Actions: browser-actions/setup-chrome가 chromedriver를 PATH에 둠
         drv = webdriver.Chrome(options=opts)
     else:
         service = Service(ChromeDriverManager().install())
         drv = webdriver.Chrome(service=service, options=opts)
+
+    try:
+        drv.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": (
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+                )
+            },
+        )
+    except Exception:
+        pass
 
     drv.set_page_load_timeout(60)
     return drv
